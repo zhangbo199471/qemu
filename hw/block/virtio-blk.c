@@ -240,7 +240,7 @@ static VirtIOBlockReq *virtio_blk_get_request(VirtIOBlock *s, VirtQueue *vq)
     VirtIOBlockReq *req = virtqueue_pop(vq, sizeof(VirtIOBlockReq));
 
     if (req) {
-        virtio_blk_init_request(s, vq, req);
+        virtio_blk_init_request(s, vq, req);//初始化
     }
     return req;
 }
@@ -410,7 +410,7 @@ static inline void submit_requests(VirtIOBlock *s, MultiReqBuffer *mrb,
     if (is_write) {
         blk_aio_pwritev(blk, sector_num << BDRV_SECTOR_BITS, qiov,
                         flags, virtio_blk_rw_complete,
-                        mrb->reqs[start]);
+                        mrb->reqs[start]);//blk_aio_pwritev 进入 BlockBackend 层
     } else {
         blk_aio_preadv(blk, sector_num << BDRV_SECTOR_BITS, qiov,
                        flags, virtio_blk_rw_complete,
@@ -577,7 +577,7 @@ static uint8_t virtio_blk_handle_discard_write_zeroes(VirtIOBlockReq *req,
         block_acct_start(blk_get_stats(s->blk), &req->acct, bytes,
                          BLOCK_ACCT_WRITE);
 
-        blk_aio_pwrite_zeroes(s->blk, sector << BDRV_SECTOR_BITS,
+        blk_aio_pwrite_zeroes(s->blk, sector << BDRV_SECTOR_BITS,//直接提交，不合并
                               bytes, blk_aio_flags,
                               virtio_blk_discard_write_zeroes_complete, req);
     } else { /* VIRTIO_BLK_T_DISCARD */
@@ -1112,7 +1112,7 @@ static int virtio_blk_handle_request(VirtIOBlockReq *req, MultiReqBuffer *mrb)
             return -1;
         }
 
-        err_status = virtio_blk_handle_discard_write_zeroes(req, &dwz_hdr,
+        err_status = virtio_blk_handle_discard_write_zeroes(req, &dwz_hdr,//写零路径
                                                             is_write_zeroes);
         if (err_status != VIRTIO_BLK_S_OK) {
             virtio_blk_req_complete(req, err_status);
@@ -1142,8 +1142,8 @@ void virtio_blk_handle_vq(VirtIOBlock *s, VirtQueue *vq)
             virtio_queue_set_notification(vq, 0);
         }
 
-        while ((req = virtio_blk_get_request(s, vq))) {
-            if (virtio_blk_handle_request(req, &mrb)) {
+        while ((req = virtio_blk_get_request(s, vq))) {//每次循环：从virtqueue弹出一个请求
+            if (virtio_blk_handle_request(req, &mrb)) {//分发请求处理函数
                 virtqueue_detach_element(req->vq, &req->elem, 0);
                 virtio_blk_free_request(req);
                 break;

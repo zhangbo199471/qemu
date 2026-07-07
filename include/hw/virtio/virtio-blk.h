@@ -67,15 +67,15 @@ struct VirtIOBlock {
     BlockRAMRegistrar blk_ram_registrar;
 };
 
-typedef struct VirtIOBlockReq {
+typedef struct VirtIOBlockReq {//从virtqueue取出的io请求
     VirtQueueElement elem;
     int64_t sector_num;
-    VirtIOBlock *dev;
+    VirtIOBlock *dev; //所属virtio-blk 设备
     VirtQueue *vq;
     IOVDiscardUndo inhdr_undo;
     IOVDiscardUndo outhdr_undo;
     struct virtio_blk_inhdr *in;
-    struct virtio_blk_outhdr out;
+    struct virtio_blk_outhdr out; // 从 out_sg 开头解析的请求头（type/sector/...）
     QEMUIOVector qiov;
     size_t in_len;
     struct VirtIOBlockReq *next;

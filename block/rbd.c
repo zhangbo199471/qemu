@@ -1320,7 +1320,7 @@ static int coroutine_fn qemu_rbd_start_co(BlockDriverState *bs,
     case RBD_AIO_FLUSH:
         r = rbd_aio_flush(s->image, c);
         break;
-#ifdef LIBRBD_SUPPORTS_WRITE_ZEROES
+#ifdef 
     case RBD_AIO_WRITE_ZEROES: {
         int zero_flags = 0;
 #ifdef RBD_WRITE_ZEROES_FLAG_THICK_PROVISION

@@ -2301,7 +2301,7 @@ int coroutine_fn bdrv_co_pwritev_part(BdrvChild *child,
     bdrv_inc_in_flight(bs);
     tracked_request_begin(&req, bs, offset, bytes, BDRV_TRACKED_WRITE);
 
-    if (flags & BDRV_REQ_ZERO_WRITE) {
+    if (flags & BDRV_REQ_ZERO_WRITE) {//ZERO_WRITE分流
         assert(!padded);
         ret = bdrv_co_do_zero_pwritev(child, offset, bytes, flags, &req);
         goto out;
