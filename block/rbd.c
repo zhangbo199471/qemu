@@ -1293,7 +1293,7 @@ static int coroutine_fn qemu_rbd_start_co(BlockDriverState *bs,
          * to support growing images, we resize the image before write
          * operations that exceed the current size.
          */
-        if (offset + bytes > s->image_size) {
+        if (offset + bytes > s->image_size) {//RBD API 不允许写入超过 image 大小的范围，可以自动扩容
             r = qemu_rbd_resize(bs, offset + bytes);
             if (r < 0) {
                 return r;
@@ -1321,9 +1321,11 @@ static int coroutine_fn qemu_rbd_start_co(BlockDriverState *bs,
         r = rbd_aio_flush(s->image, c);
         break;
 #ifdef 
-    case RBD_AIO_WRITE_ZEROES: {
+    case RBD_AIO_WRITE_ZEROES: {//写0分支
         int zero_flags = 0;
 #ifdef RBD_WRITE_ZEROES_FLAG_THICK_PROVISION
+        // BDRV_REQ_MAY_UNMAP → zero_flags = 0（默认 ZERO 路径，稀疏）
+        // 无 MAY_UNMAP       → zero_flags = THICK_PROVISION（预分配）
         if (!(flags & BDRV_REQ_MAY_UNMAP)) {
             zero_flags = RBD_WRITE_ZEROES_FLAG_THICK_PROVISION;
         }

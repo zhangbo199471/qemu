@@ -451,11 +451,11 @@ static void virtio_blk_submit_multireq(VirtIOBlock *s, MultiReqBuffer *mrb)
     max_transfer = blk_get_max_transfer(mrb->reqs[0]->dev->blk);
 
     qsort(mrb->reqs, mrb->num_reqs, sizeof(*mrb->reqs),
-          &multireq_compare);
+          &multireq_compare);//按 sector_num 排序，保证连续的请求在一起
 
-    for (i = 0; i < mrb->num_reqs; i++) {
+    for (i = 0; i < mrb->num_reqs; i++) {//遍历所有请求，合并连续的请求
         VirtIOBlockReq *req = mrb->reqs[i];
-        if (num_reqs > 0) {
+        if (num_reqs > 0) {//检查能否继续合并
             /*
              * NOTE: We cannot merge the requests in below situations:
              * 1. requests are not sequential
@@ -467,17 +467,18 @@ static void virtio_blk_submit_multireq(VirtIOBlock *s, MultiReqBuffer *mrb)
                 req->qiov.size > max_transfer ||
                 nb_sectors > (max_transfer -
                               req->qiov.size) / BDRV_SECTOR_SIZE) {
-                submit_requests(s, mrb, start, num_reqs, niov);
+                submit_requests(s, mrb, start, num_reqs, niov);//提交旧的合并请求
                 num_reqs = 0;
             }
         }
 
-        if (num_reqs == 0) {
+        if (num_reqs == 0) {//开始新的合并请求
             sector_num = req->sector_num;
             nb_sectors = niov = 0;
             start = i;
         }
 
+        //累加
         nb_sectors += req->qiov.size / BDRV_SECTOR_SIZE;
         niov += req->qiov.niov;
         num_reqs++;
@@ -570,14 +571,14 @@ static uint8_t virtio_blk_handle_discard_write_zeroes(VirtIOBlockReq *req,
     if (is_write_zeroes) { /* VIRTIO_BLK_T_WRITE_ZEROES */
         int blk_aio_flags = 0;
 
-        if (flags & VIRTIO_BLK_WRITE_ZEROES_FLAG_UNMAP) {
+        if (flags & VIRTIO_BLK_WRITE_ZEROES_FLAG_UNMAP) {// Guest 的 UNMAP flag → QEMU 的 BDRV_REQ_MAY_UNMAP
             blk_aio_flags |= BDRV_REQ_MAY_UNMAP;
         }
 
-        block_acct_start(blk_get_stats(s->blk), &req->acct, bytes,
+        block_acct_start(blk_get_stats(s->blk), &req->acct, bytes,//记录io统计
                          BLOCK_ACCT_WRITE);
 
-        blk_aio_pwrite_zeroes(s->blk, sector << BDRV_SECTOR_BITS,//直接提交，不合并
+        blk_aio_pwrite_zeroes(s->blk, sector << BDRV_SECTOR_BITS,//直接提交，不合并，写零没有实际数据，合并没有意义
                               bytes, blk_aio_flags,
                               virtio_blk_discard_write_zeroes_complete, req);
     } else { /* VIRTIO_BLK_T_DISCARD */
@@ -992,7 +993,7 @@ static int virtio_blk_handle_request(VirtIOBlockReq *req, MultiReqBuffer *mrb)
      * is an optional flag. Although a guest should not send this flag if
      * not negotiated we ignored it in the past. So keep ignoring it. */
     switch (type & ~(VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_BARRIER)) {
-    case VIRTIO_BLK_T_IN:
+    case VIRTIO_BLK_T_IN://普通读/写
     {
         bool is_write = type & VIRTIO_BLK_T_OUT;
         req->sector_num = virtio_ldq_p(vdev, &req->out.sector);
@@ -1023,11 +1024,11 @@ static int virtio_blk_handle_request(VirtIOBlockReq *req, MultiReqBuffer *mrb)
         if (mrb->num_reqs > 0 && (mrb->num_reqs == VIRTIO_BLK_MAX_MERGE_REQS ||
                                   is_write != mrb->is_write ||
                                   !s->conf.request_merging)) {
-            virtio_blk_submit_multireq(s, mrb);
+            virtio_blk_submit_multireq(s, mrb);//提交合并请求
         }
 
         assert(mrb->num_reqs < VIRTIO_BLK_MAX_MERGE_REQS);
-        mrb->reqs[mrb->num_reqs++] = req;
+        mrb->reqs[mrb->num_reqs++] = req;//将请求加入到mrb中，等待合并提交
         mrb->is_write = is_write;
         break;
     }
@@ -1084,7 +1085,7 @@ static int virtio_blk_handle_request(VirtIOBlockReq *req, MultiReqBuffer *mrb)
      * so we must mask it for these requests, then we will check if it is set.
      */
     case VIRTIO_BLK_T_DISCARD & ~VIRTIO_BLK_T_OUT:
-    case VIRTIO_BLK_T_WRITE_ZEROES & ~VIRTIO_BLK_T_OUT:
+    case VIRTIO_BLK_T_WRITE_ZEROES & ~VIRTIO_BLK_T_OUT://WRITE_ZEROES分支
     {
         struct virtio_blk_discard_write_zeroes dwz_hdr;
         size_t out_len = iov_size(out_iov, out_num);

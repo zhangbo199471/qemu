@@ -1447,6 +1447,7 @@ blk_co_do_pwritev_part(BlockBackend *blk, int64_t offset, int64_t bytes,
         flags |= BDRV_REQ_FUA;
     }
 
+    //进入block io层
     ret = bdrv_co_pwritev_part(blk->root, offset, bytes, qiov, qiov_offset,
                                flags);
     bdrv_dec_in_flight(bs);
@@ -1611,12 +1612,13 @@ static BlockAIOCB *blk_aio_prwv(BlockBackend *blk, int64_t offset,
     acb->bytes = bytes;
     acb->has_returned = false;
 
+    //创建 协程，协程入口函数为 co_entry，参数为 acb
     co = qemu_coroutine_create(co_entry, acb);
     aio_co_enter(qemu_get_current_aio_context(), co);
 
     acb->has_returned = true;
     if (acb->rwco.ret != NOT_DONE) {
-        replay_bh_schedule_oneshot_event(qemu_get_current_aio_context(),
+        replay_bh_schedule_oneshot_event(qemu_get_current_aio_context(),//如果协程已经返回，则直接调用回调函数，并减少 in_flight 计数
                                          blk_aio_complete_bh, acb);
     }
 
@@ -1642,9 +1644,10 @@ static void coroutine_fn blk_aio_write_entry(void *opaque)
     QEMUIOVector *qiov = rwco->iobuf;
 
     assert(!qiov || qiov->size == acb->bytes);
+    //限流 + 写缓存
     rwco->ret = blk_co_do_pwritev_part(rwco->blk, rwco->offset, acb->bytes,
                                        qiov, 0, rwco->flags);
-    blk_aio_complete(acb);
+    blk_aio_complete(acb);//完成后通知blockbackend
 }
 
 BlockAIOCB *blk_aio_pwrite_zeroes(BlockBackend *blk, int64_t offset,
@@ -1652,7 +1655,7 @@ BlockAIOCB *blk_aio_pwrite_zeroes(BlockBackend *blk, int64_t offset,
                                   BlockCompletionFunc *cb, void *opaque)
 {
     IO_CODE();
-    return blk_aio_prwv(blk, offset, bytes, NULL, blk_aio_write_entry,
+    return blk_aio_prwv(blk, offset, bytes, NULL, blk_aio_write_entry,//统一的 coroutine 回调 -> blk_aio_write_entry , 数据为 NULL
                         flags | BDRV_REQ_ZERO_WRITE, cb, opaque);
 }
 
@@ -1733,7 +1736,7 @@ BlockAIOCB *blk_aio_pwritev(BlockBackend *blk, int64_t offset,
 {
     IO_CODE();
     assert((uint64_t)qiov->size <= INT64_MAX);
-    return blk_aio_prwv(blk, offset, qiov->size, qiov,
+    return blk_aio_prwv(blk, offset, qiov->size, qiov,//qiov 有数据buffer
                         blk_aio_write_entry, flags, cb, opaque);
 }
 

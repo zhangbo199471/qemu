@@ -1894,7 +1894,7 @@ bdrv_co_do_pwrite_zeroes(BlockDriverState *bs, int64_t offset, int64_t bytes,
     max_write_zeroes = QEMU_ALIGN_DOWN(max_write_zeroes, alignment);
     assert(max_write_zeroes >= bs->bl.request_alignment);
 
-    while (bytes > 0 && !ret) {
+    while (bytes > 0 && !ret) {//循环处理，每次对齐到alignment
         int64_t num = bytes;
 
         /* Align request.  Block drivers can expect the "bulk" of the request
@@ -1944,7 +1944,7 @@ bdrv_co_do_pwrite_zeroes(BlockDriverState *bs, int64_t offset, int64_t bytes,
             }
             num = MIN(num, max_transfer);
             if (buf == NULL) {
-                buf = qemu_try_blockalign0(bs, num);
+                buf = qemu_try_blockalign0(bs, num);//分配并清零
                 if (buf == NULL) {
                     ret = -ENOMEM;
                     goto fail;
@@ -2102,14 +2102,14 @@ bdrv_aligned_pwritev(BdrvChild *child, BdrvTrackedRequest *req,
     max_transfer = QEMU_ALIGN_DOWN(MIN_NON_ZERO(bs->bl.max_transfer, INT_MAX),
                                    align);
 
-    ret = bdrv_co_write_req_prepare(child, offset, bytes, req, flags);
+    ret = bdrv_co_write_req_prepare(child, offset, bytes, req, flags);//写前准备
 
-    if (!ret && bs->detect_zeroes != BLOCKDEV_DETECT_ZEROES_OPTIONS_OFF &&
+    if (!ret && bs->detect_zeroes != BLOCKDEV_DETECT_ZEROES_OPTIONS_OFF && //detect_zeroes=on|unmap
         !(flags & BDRV_REQ_ZERO_WRITE) && drv->bdrv_co_pwrite_zeroes &&
         qemu_iovec_is_zero(qiov, qiov_offset, bytes)) {
-        flags |= BDRV_REQ_ZERO_WRITE;
+        flags |= BDRV_REQ_ZERO_WRITE;    //标记为零写
         if (bs->detect_zeroes == BLOCKDEV_DETECT_ZEROES_OPTIONS_UNMAP) {
-            flags |= BDRV_REQ_MAY_UNMAP;
+            flags |= BDRV_REQ_MAY_UNMAP;  // unmap模式，附加回收空间
         }
 
         /* Can't use optimization hint with bufferless zero write */
@@ -2120,7 +2120,7 @@ bdrv_aligned_pwritev(BdrvChild *child, BdrvTrackedRequest *req,
         /* Do nothing, write notifier decided to fail this request */
     } else if (flags & BDRV_REQ_ZERO_WRITE) {
         bdrv_co_debug_event(bs, BLKDBG_PWRITEV_ZERO);
-        ret = bdrv_co_do_pwrite_zeroes(bs, offset, bytes, flags);
+        ret = bdrv_co_do_pwrite_zeroes(bs, offset, bytes, flags);//写零
     } else if (flags & BDRV_REQ_WRITE_COMPRESSED) {
         ret = bdrv_driver_pwritev_compressed(bs, offset, bytes,
                                              qiov, qiov_offset);
@@ -2258,8 +2258,10 @@ int coroutine_fn bdrv_co_pwritev_part(BdrvChild *child,
     }
 
     if (flags & BDRV_REQ_ZERO_WRITE) {
+        //写零没有用户buffer,只需要检查offset和bytes的合法性
         ret = bdrv_check_qiov_request(offset, bytes, qiov, qiov_offset, NULL);
     } else {
+        //普通写请求需要检查offset,bytes和qiov的合法性
         ret = bdrv_check_request32(offset, bytes, qiov, qiov_offset);
     }
     if (ret < 0) {
